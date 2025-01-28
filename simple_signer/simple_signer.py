@@ -7,6 +7,7 @@ import locale
 import os
 import subprocess
 import sys
+from textwrap import dedent
 import traceback
 from pathlib import Path
 from shutil import which
@@ -95,7 +96,7 @@ class SimpleSignerAboutWindow(QDialog):
         self.InitUI()
 
     def InitUI(self):
-        self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok)
+        self.buttonBox = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
         self.buttonBox.accepted.connect(self.accept)
 
         self.layout = QVBoxLayout(self)
@@ -108,17 +109,18 @@ class SimpleSignerAboutWindow(QDialog):
 
         labelCopyright = QLabel(self)
         labelCopyright.setText(
-            "<br>"
-            + __copyright__
-            + " <a href='https://georg-sieber.de'>"
-            + __author__
-            + "</a>"
-            "<br>"
-            "<br>"
-            "GNU General Public License v3.0"
-            "<br>"
-            "<a href='" + __website__ + "'>" + __website__ + "</a>"
-            "<br>"
+            dedent(
+                f"""\
+				<br>
+				{__copyright__}
+				<a href="https://georg-sieber.de">{__author__}</a>
+				<br>
+				GNU General Public License v3.0
+				<br>
+				<a href="{__website__}">{__website__}</a>
+				<br>
+				"""
+            )
         )
         labelCopyright.setOpenExternalLinks(True)
         labelCopyright.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -751,12 +753,12 @@ class SimpleSignerMainWindow(QMainWindow):
                 msg.setStandardButtons(QMessageBox.StandardButton.Ok)
                 btnOpen = msg.addButton(
                     QApplication.translate("SimpleSigner", "Open Directory"),
-                    QMessageBox.ActionRole,
+                    QMessageBox.ButtonRole.ActionRole,
                 )
                 btnOpen.clicked.connect(self.OnClickOpenSignedInFileManager)
                 btnOpen = msg.addButton(
                     QApplication.translate("SimpleSigner", "Open Signed PDF"),
-                    QMessageBox.ActionRole,
+                    QMessageBox.ButtonRole.ActionRole,
                 )
                 btnOpen.clicked.connect(self.OnClickOpenSigned)
                 retval = msg.exec()
