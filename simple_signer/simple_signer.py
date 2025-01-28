@@ -162,7 +162,7 @@ class SimpleSignerPreview(QLabel):
     def mousePressEvent(self, event):
         self.origin = event.pos()
         if self.rubberBand is None:
-            self.rubberBand = QRubberBand(QRubberBand.Rectangle, self)
+            self.rubberBand = QRubberBand(QRubberBand.Shape.Rectangle, self)
         self.rubberBand.setGeometry(QRect(self.origin, QSize()))
         self.rubberBand.show()
 
@@ -217,7 +217,9 @@ class SimpleSignerPreviewWindow(QDialog):
 
         self.lblPageView = SimpleSignerPreview()
         self.lblPageView.setScaledContents(True)
-        self.lblPageView.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.lblPageView.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         self.lblPageView.setPixmap(
             self.pymupixmap2qpixmap(self.pdfDocument[0].get_pixmap())
         )
@@ -602,9 +604,9 @@ class SimpleSignerMainWindow(QMainWindow):
             )
 
             # check certificate
-            if (
-                p12Data[1] is not None
-                and p12Data[1].not_valid_after < datetime.datetime.now()
+            if p12Data[1] is not None and (
+                p12Data[1].not_valid_after_utc
+                < datetime.datetime.now(datetime.timezone.utc)
             ):
                 msg = QMessageBox()
                 msg.setIcon(QMessageBox.Icon.Warning)
@@ -613,9 +615,9 @@ class SimpleSignerMainWindow(QMainWindow):
                 )
                 msg.setText(
                     QApplication.translate(
-                        "SimpleSigner", "Your certificate expired on %s. Continue?"
+                        "SimpleSigner",
+                        f"Your certificate expired on {p12Data[1].not_valid_after}. Continue?",
                     )
-                    % str(p12Data[1].not_valid_after)
                 )
                 msg.setStandardButtons(
                     QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
@@ -635,16 +637,16 @@ class SimpleSignerMainWindow(QMainWindow):
                     "sigpage": 0,
                     "sigbutton": False,
                     "sigfield": "Signature-"
-                    + str(datetime.datetime.utcnow().timestamp()),
+                    + str(datetime.datetime.now(datetime.timezone.utc).timestamp()),
                     "auto_sigfield": False,
                     "sigandcertify": certify,
                     "signaturebox": (0, 0, 0, 0),
                     "contact": self.signatureContact,
                     "location": self.signatureLocation,
                     "reason": self.signatureReason,
-                    "signingdate": datetime.datetime.utcnow().strftime(
-                        "D:%Y%m%d%H%M%S+00'00'"
-                    ),
+                    "signingdate": datetime.datetime.now(
+                        datetime.timezone.utc
+                    ).strftime("D:%Y%m%d%H%M%S+00'00'"),
                 }
 
                 if self.chkDrawStamp.isChecked():
@@ -746,9 +748,8 @@ class SimpleSignerMainWindow(QMainWindow):
                 msg.setWindowTitle("😇")
                 msg.setText(
                     QApplication.translate(
-                        "SimpleSigner", "Successfully saved as »%s«."
+                        "SimpleSigner", f"Successfully saved as {self.signedPdfPath}."
                     )
-                    % self.signedPdfPath
                 )
                 msg.setStandardButtons(QMessageBox.StandardButton.Ok)
                 btnOpen = msg.addButton(
@@ -796,11 +797,11 @@ def main():
     translator = QTranslator(app)
     langCode = get_os_language()
     if getattr(sys, "frozen", False):
-        translator.load(os.path.join(sys._MEIPASS, "lang/%s.qm" % langCode))
+        translator.load(os.path.join(sys._MEIPASS, f"lang/{langCode}.qm"))
     elif os.path.isdir("lang"):
-        translator.load("lang/%s.qm" % langCode)
+        translator.load(f"lang/{langCode}.qm")
     else:
-        translator.load("/usr/share/simple-signer/lang/%s.qm" % langCode)
+        translator.load(f"/usr/share/simple-signer/lang/{langCode}.qm")
     app.installTranslator(translator)
 
     window = SimpleSignerMainWindow()
