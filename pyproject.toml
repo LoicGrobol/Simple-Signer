@@ -29,7 +29,6 @@ classifiers = [
 dependencies = [
     "endesive",
     "PyMuPDF",
-    "pillow",
     "PyQt6",
 ]
 
