@@ -22,9 +22,9 @@ from endesive.pdf import cms
 # selecting files from network shares using QFileDialog (on linux)
 if os.environ.get('QT_QPA_PLATFORMTHEME') == 'qt5ct':
 	os.environ['QT_QPA_PLATFORMTHEME'] = 'gtk2'
-from PyQt5.QtWidgets import *
-from PyQt5.QtGui import *
-from PyQt5.QtCore import *
+from PyQt6.QtWidgets import *
+from PyQt6.QtGui import *
+from PyQt6.QtCore import *
 
 class FileDropLineEdit(QLineEdit):
 	def __init__(self, parent=None):
