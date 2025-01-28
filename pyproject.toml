@@ -30,6 +30,8 @@ dependencies = [
     "endesive",
     "PyMuPDF",
     "PyQt6",
+    "tomli-w",
+    "xdg-base-dirs",
 ]
 
 [project.readme]

@@ -4,10 +4,12 @@ import datetime
 import io
 import json
 import locale
+from logging import config
 import os
 import subprocess
 import sys
 from textwrap import dedent
+import tomllib
 import traceback
 from pathlib import Path
 from shutil import which
@@ -16,6 +18,8 @@ import pymupdf
 from cryptography.hazmat import backends
 from cryptography.hazmat.primitives.serialization import pkcs12
 from endesive.pdf import cms
+import tomli_w
+import xdg_base_dirs
 
 from .__init__ import __author__, __copyright__, __title__, __version__, __website__
 
@@ -300,8 +304,7 @@ class SimpleSignerPreviewWindow(QDialog):
 
 
 class SimpleSignerMainWindow(QMainWindow):
-    CONFIG_PATH = str(Path.home()) + "/.config/Simple-Signer/settings.ini"
-    CONFIG_PATH_OLD = str(Path.home()) + "/.simple-signer.ini"
+    CONFIG_PATH = xdg_base_dirs.xdg_config_home() / "simple-signer" / "config.toml"
 
     config = None
     signedPdfPath = None
@@ -458,19 +461,14 @@ class SimpleSignerMainWindow(QMainWindow):
         self.setWindowTitle(__title__)
 
         # Defaults From Config File
-        if not os.path.isdir(os.path.dirname(self.CONFIG_PATH)):
-            os.makedirs(os.path.dirname(self.CONFIG_PATH), exist_ok=True)
-        if os.path.exists(self.CONFIG_PATH_OLD):
-            os.rename(self.CONFIG_PATH_OLD, self.CONFIG_PATH)
-        self.config = configparser.ConfigParser()
-        if os.path.exists(self.CONFIG_PATH):
-            self.config.read(self.CONFIG_PATH)
-            if not self.config.has_section("settings"):
-                self.config.add_section("settings")
+        if self.CONFIG_PATH.exists():
+            with open(self.CONFIG_PATH, "rb") as in_stream:
+                self.config = tomllib.load(in_stream)
+            self.config.setdefault("settings", {})
             self.txtCertPath.setText(self.config["settings"].get("cert-path", ""))
             self.txtStampPath.setText(self.config["settings"].get("stamp-path", ""))
             self.chkDrawStamp.setChecked(
-                True if self.config["settings"].get("draw-stamp", "0") == "1" else False
+                self.config["settings"].get("draw-stamp", "0") == "1"
             )
             self.signatureContact = self.config["settings"].get(
                 "signature-contact", self.signatureContact
@@ -493,22 +491,30 @@ class SimpleSignerMainWindow(QMainWindow):
                 self.stampBorder = int(self.config["settings"]["stamp-border"])
             if "stamp-labels" in self.config["settings"]:
                 self.stampLabels = self.config["settings"]["stamp-labels"].split(",")
+        else:
+            self.config = {}
 
         # Defaults From Command Line
         for arg in sys.argv[1:]:
-            self.txtPdfPath.setText(self.txtPdfPath.toPlainText() + arg + "\n")
+            self.txtPdfPath.setText(f"{self.txtPdfPath.toPlainText()}{arg}\n")
 
     def closeEvent(self, event):
         # Write Settings To File
-        if not self.config.has_section("settings"):
-            self.config.add_section("settings")
+        self.config.setdefault("settings", {})
         self.config["settings"]["cert-path"] = self.txtCertPath.text()
         self.config["settings"]["stamp-path"] = self.txtStampPath.text()
         self.config["settings"]["draw-stamp"] = (
             "1" if self.chkDrawStamp.isChecked() else "0"
         )
-        with open(self.CONFIG_PATH, "w") as configfile:
-            self.config.write(configfile)
+        self.config["settings"]["last-dir"] = (
+            os.path.dirname(self.txtPdfPath.toPlainText().split("\n")[0])
+            or self.config["settings"]["last-dir"]
+        )
+
+        if not self.CONFIG_PATH.parent.exists():
+            self.CONFIG_PATH.parent.mkdir(parents=True)
+        with open(self.CONFIG_PATH, "wb") as out_stream:
+            tomli_w.dump(self.config, out_stream)
         event.accept()
 
     def strArrayToFloatArray(self, strArray):
@@ -526,31 +532,46 @@ class SimpleSignerMainWindow(QMainWindow):
             QApplication.translate("SimpleSigner", "PDF File"),
             "PDF Files (*.pdf);;All Files (*.*)",
             True,
+            directory=self.config.get("last-dir"),
         )
         if fileNames:
             self.txtPdfPath.setText("\n".join(fileNames))
 
     def OnClickChooseCertPath(self, e):
+        if (last_path := self.config.get("cert-path")) is None:
+            parent = Path.home()
+        else:
+            parent = last_path.parent
         fileName = self.OpenFileDialog(
             QApplication.translate("SimpleSigner", "Certificate File"),
             "Certificate Files (*.p12 *.pfx);;All Files (*.*)",
+            directory=str(parent),
         )
         if fileName:
             self.txtCertPath.setText(fileName)
 
     def OnClickChooseStampPath(self, e):
+        if (last_path := self.config.get("stamp-path")) is None:
+            parent = Path.home()
+        else:
+            parent = last_path.parent
         fileName = self.OpenFileDialog(
             QApplication.translate("SimpleSigner", "Stamp Image File"),
             "Image Files (*.jpg *.png);;Stamp Manifest Files (*.stampinfo);;All Files (*.*)",
+            directory=str(parent),
         )
         if fileName:
             self.txtStampPath.setText(fileName)
 
-    def OpenFileDialog(self, title, filter, multiple=False):
+    def OpenFileDialog(self, title, filter, multiple=False, directory=None):
         if multiple:
-            fileName, _ = QFileDialog.getOpenFileNames(self, title, None, filter)
+            fileName, _ = QFileDialog.getOpenFileNames(
+                parent=self, caption=title, directory=directory, filter=filter
+            )
         else:
-            fileName, _ = QFileDialog.getOpenFileName(self, title, None, filter)
+            fileName, _ = QFileDialog.getOpenFileName(
+                parent=self, caption=title, directory=directory, filter=filter
+            )
         return fileName
 
     def SaveFileDialog(self, title, default, filter):
@@ -563,8 +584,6 @@ class SimpleSignerMainWindow(QMainWindow):
             return
         if self.existsBinary("okular"):  # Okular displays signatures
             cmd = ["okular", self.signedPdfPath]
-        elif self.existsBinary("libreoffice"):  # LibreOffice displays signatures
-            cmd = ["libreoffice", self.signedPdfPath]
         elif self.existsBinary("xdg-open"):  # Linux fallback
             cmd = ["xdg-open", self.signedPdfPath]
         elif self.existsBinary("open"):  # macOS
@@ -574,6 +593,8 @@ class SimpleSignerMainWindow(QMainWindow):
     def OnClickOpenSignedInFileManager(self, e):
         if sys.platform == "win32":  # Windows
             cmd = ["explorer", "/select,", os.path.normpath(self.signedPdfPath)]
+        elif self.existsBinary("xdg-open"):
+            cmd = ["xdg-open", self.signedPdfPath]
         elif self.existsBinary("nemo"):  # Linux Mint
             cmd = ["nemo", self.signedPdfPath]
         elif self.existsBinary("nautilus"):  # Ubuntu
@@ -636,8 +657,7 @@ class SimpleSignerMainWindow(QMainWindow):
                     "sigflagsft": 132,
                     "sigpage": 0,
                     "sigbutton": False,
-                    "sigfield": "Signature-"
-                    + str(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+                    "sigfield": f"Signature-{datetime.datetime.now(datetime.timezone.utc).timestamp()}",
                     "auto_sigfield": False,
                     "sigandcertify": certify,
                     "signaturebox": (0, 0, 0, 0),
@@ -734,7 +754,12 @@ class SimpleSignerMainWindow(QMainWindow):
 
             # sign
             signData = cms.sign(
-                pdfData, dct, p12Data[0], p12Data[1], p12Data[2], "sha256"
+                datau=pdfData,
+                udct=dct,
+                key=p12Data[0],
+                cert=p12Data[1],
+                othercerts=p12Data[2],
+                algomd="sha256",
             )
 
             # save signed target PDF
