@@ -1,10 +1,9 @@
-import configparser
+
 import ctypes
 import datetime
 import io
 import json
 import locale
-from logging import config
 import os
 import subprocess
 import sys
@@ -312,8 +311,8 @@ class SimpleSignerMainWindow(QMainWindow):
     signatureContact = ""
     signatureLocation = ""
     signatureReason = ""
-    stampBackground = [0.75, 0.80, 0.95]
-    stampOutline = [0.20, 0.30, 0.50]
+    stampBackground = None
+    stampOutline = [0.0, 0.0, 0.0]
     stampBorder = 1
     stampLabels = ["CN", "date"]
 
@@ -462,6 +461,7 @@ class SimpleSignerMainWindow(QMainWindow):
 
         # Defaults From Config File
         if self.CONFIG_PATH.exists():
+            # TODO: make this better
             with open(self.CONFIG_PATH, "rb") as in_stream:
                 self.config = tomllib.load(in_stream)
             self.config.setdefault("settings", {})
@@ -492,7 +492,7 @@ class SimpleSignerMainWindow(QMainWindow):
             if "stamp-labels" in self.config["settings"]:
                 self.stampLabels = self.config["settings"]["stamp-labels"].split(",")
         else:
-            self.config = {}
+            self.config = {"settings": {}}
 
         # Defaults From Command Line
         for arg in sys.argv[1:]:
@@ -500,7 +500,6 @@ class SimpleSignerMainWindow(QMainWindow):
 
     def closeEvent(self, event):
         # Write Settings To File
-        self.config.setdefault("settings", {})
         self.config["settings"]["cert-path"] = self.txtCertPath.text()
         self.config["settings"]["stamp-path"] = self.txtStampPath.text()
         self.config["settings"]["draw-stamp"] = (
@@ -532,7 +531,7 @@ class SimpleSignerMainWindow(QMainWindow):
             QApplication.translate("SimpleSigner", "PDF File"),
             "PDF Files (*.pdf);;All Files (*.*)",
             True,
-            directory=self.config.get("last-dir"),
+            directory=self.config["settings"].get("last-dir"),
         )
         if fileNames:
             self.txtPdfPath.setText("\n".join(fileNames))
@@ -661,6 +660,7 @@ class SimpleSignerMainWindow(QMainWindow):
                     "auto_sigfield": False,
                     "sigandcertify": certify,
                     "signaturebox": (0, 0, 0, 0),
+                    "signature_img_distort": False,
                     "contact": self.signatureContact,
                     "location": self.signatureLocation,
                     "reason": self.signatureReason,
@@ -690,12 +690,14 @@ class SimpleSignerMainWindow(QMainWindow):
                         dct["signaturebox"] = dlg.stampRect
                         dct["sigpage"] = dlg.stampPage
                         dct["signature_appearance"] = {
-                            "background": self.stampBackground,
                             "outline": self.stampOutline,
                             "border": self.stampBorder,
                             "labels": True,
                             "display": self.stampLabels,
                         }
+                        if self.stampBackground is not None:
+                            dct["signature_appearance"]["backgroud"] = self.stampBackground
+                            
                         # use stamp image if given
                         if os.path.exists(self.txtStampPath.text()):
                             dct["signature_appearance"]["icon"] = (
